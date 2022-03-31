@@ -1,0 +1,257 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+#load all the required packages
+library(ggplot2)
+library(tidyverse)
+library(ggrepel)
+```
+
+First, reading all the files into R
+```{r}
+sicap0 = read.delim("0min-processed.txt")
+sicap4 = read.delim("4min-processed.txt")
+sicap8 = read.delim("8min-processed.txt")
+sicap12 = read.delim("12min-processed.txt")
+coIP = read.delim("coIP-processed.txt")
+```
+
+
+```{r}
+rownames(sicap0) = sicap0$Gene.Symbol
+rownames(sicap4) = sicap4$Gene.Symbol
+rownames(sicap8) = sicap8$Gene.Symbol
+rownames(sicap12) = sicap12$Gene.Symbol
+rownames(coIP) = coIP$Gene.Symbol
+```
+
+
+```{r}
+#save the RDS objects
+saveRDS(coIP, "Robjects/coIP.rds")
+saveRDS(sicap0, "Robjects/sicap0.rds")
+saveRDS(sicap4, "Robjects/sicap4.rds")
+saveRDS(sicap8, "Robjects/sicap8.rds")
+saveRDS(sicap12, "Robjects/sicap12.rds")
+```
+
+
+```{r}
+group = c("PRDM9", "HELLS", "DEK", "SMARCA5","ZC3H13", "FUS")
+coIP$style = ifelse(rownames(coIP) %in% group, "red", "black")
+sicap0$style = ifelse(rownames(sicap0) %in% group, "red", "black")
+sicap4$style = ifelse(rownames(sicap4) %in% group, "red", "black")
+sicap4$x <- seq.int(nrow(sicap4))
+df = sicap4 %>% filter(sicap4$Gene.Symbol %in% group) 
+df$alpha = 1
+sicap8$style = ifelse(rownames(sicap8) %in% group, "red", "black")
+sicap12$style = ifelse(rownames(sicap12) %in% group, "red", "black")
+```
+
+
+```{r}
+#group = c("PRDM9", "HELLS", "DEK", "SMARCA5","ZC3H13", "FUS")
+ggplot(sicap0,aes(x=seq_along(Sum.PEP.Score), y=Sum.PEP.Score, alpha = style)) + geom_point(size = 2.5, colour = sicap0$style) + xlim(0,600) + ylim(0,30) geom_text_repel(aes(label= Gene.Symbol), box.padding = 0.5, max.overlaps = Inf,vjust=1, hjust=1) + ylab("Sum PEP score") + xlab("Decreasing order of enrichment n = 600") + theme_bw() + ggtitle("0 min SICAP")
+
+sicap0$x = seq.int(nrow(sicap0))
+ggplot(sicap0,aes(x = x, y=Sum.PEP.Score, alpha = style)) +
+  geom_point(size = 2.5, colour = sicap0$style) + 
+  xlim(0,600) + ylim(0,30) + ggtitle("0 min SICAP") + 
+  geom_text_repel(data = subset(sicap0, style == "red"), 
+                  aes(label = Gene.Symbol), vjust = 0.5)+ 
+  ylab("Sum PEP score") + xlab("Decreasing rank order of enrichment n = 600") + theme(legend.position = "none") + theme_bw()
+```
+
+```{r}
+ggplot(sicap4,aes(x = x, y=Sum.PEP.Score, alpha = style)) +
+  geom_point(size = 2.5, colour = sicap4$style) + 
+  xlim(0,300) + ylim(0,22) + ggtitle("4 min SICAP") + 
+  geom_text_repel(data = subset(sicap4, style == "red"), 
+                  aes(label = Gene.Symbol), vjust = 1.8)+ 
+  ylab("Sum PEP score") + xlab("Decreasing rank order of enrichment n = 253") + theme(legend.position = "none") + theme_bw()
+
+#ggplot(sicap4,aes(x=seq_along(Sum.PEP.Score), y=Sum.PEP.Score, alpha = style)) + geom_point(size = 2.5, colour = sicap4$style) + xlim(0,300) + ylim(0,22) + ggtitle("4 min SICAP") + geom_text_repel(data = subset(sicap4, style == "red"), aes(label = Gene.Symbol))+ ylab("Sum PEP score") + xlab("Decreasing rank order of enrichment n = 253") + theme_bw()
+
+#ggplot(sicap4,aes(x=seq_along(Sum.PEP.Score), y=Sum.PEP.Score, alpha = style)) + geom_point(size = 2.5, colour = sicap4$style) + xlim(0,300) + ylim(0,25) + ggtitle("4 min SICAP") + geom_text_repel(aes(label = (ifelse(sicap4$style == "red", Gene.Symbol,""))), position = "identity", box.padding = 0.25, label.padding = 0.5,max.overlaps = Inf, hjust = 2.0, vjust=1.5) + ylab("Sum PEP score") + xlab("Decreasing rank order of enrichment n = 253") + theme_bw()
+
+#label = ifelse(sicap4$style == "red", Gene.Symbol,"")
+#sicap4 %>% filter(style == "red") %>% pull(Gene.Symbol)
+#geom_text_repel(aes(label= Gene.Symbol)
+```
+
+
+```{r}
+ggplot(sicap8,aes(x=seq_along(Sum.PEP.Score), y=Sum.PEP.Score, alpha = style)) + geom_point(size = 2.5, colour = sicap8$style) + xlim(0,600) + ylim(0,30) + ggtitle("8 min SICAP") + geom_text_repel(aes(label=Gene.Symbol), box.padding = 0.5, max.overlaps = Inf,vjust=1.2, hjust=1.2) + ylab("Sum PEP score") + xlab("Decreasing rank order of enrichment n = 160") + theme_bw()
+
+sicap8$x = seq.int(nrow(sicap8))
+ggplot(sicap8,aes(x = x, y=Sum.PEP.Score, alpha = style)) +
+  geom_point(size = 2.5, colour = sicap8$style) + 
+  xlim(0,200) + ylim(0,10) + ggtitle("8 min SICAP") + 
+  geom_text_repel(data = subset(sicap8, style == "red"), 
+                  aes(label = Gene.Symbol), vjust = 1.8)+ 
+  ylab("Sum PEP score") + xlab("Decreasing rank order of enrichment n = 160") + theme(legend.position = "none") + theme_bw()
+```
+
+```{r}
+ggplot(sicap12,aes(x=seq_along(Sum.PEP.Score), y=Sum.PEP.Score, alpha = style)) + geom_point(size = 2.5, colour = sicap12$style) + xlim(0,600) + ylim(0,30) + ggtitle("12 min SICAP") + geom_text_repel(aes(label=Gene.Symbol), box.padding = 0.5, max.overlaps = Inf,vjust=1.2, hjust=1.2) + ylab("Sum PEP score") + xlab("Decreasing rank order of enrichment n = 357") + theme_bw()
+
+sicap12$x = seq.int(nrow(sicap12))
+ggplot(sicap12,aes(x = x, y=Sum.PEP.Score, alpha = style)) +
+  geom_point(size = 2.5, colour = sicap12$style) + 
+  xlim(0,400) + ylim(0,25) + ggtitle("12 min SICAP") + 
+  geom_text_repel(data = subset(sicap12, style == "red"), 
+                  aes(label = Gene.Symbol), vjust = 0.4)+ 
+  ylab("Sum PEP score") + xlab("Decreasing rank order of enrichment n = 357") + theme(legend.position = "none") + theme_bw()
+```
+
+```{r}
+ggplot(coIP,aes(x=seq_along(Sum.PEP.Score), y=Sum.PEP.Score, alpha = style)) + geom_point(size = 2.5, colour = coIP$style) + xlim(0,600) + ylim(0,300) + ggtitle("coIP") + geom_text_repel(aes(label=Gene.Symbol), box.padding = 0.5, max.overlaps = Inf,vjust=1, hjust=1) + ylab("Sum PEP score") + xlab("Decreasing order of enrichment n = 509") + theme_bw
+
+coIP$x = seq.int(nrow(coIP))
+ggplot(coIP,aes(x = x, y=Sum.PEP.Score, alpha = style)) +
+  geom_point(size = 2.5, colour = coIP$style) + 
+  xlim(0,600) + ylim(0,100) + ggtitle("coIP") + 
+  geom_text_repel(data = subset(coIP, style == "red"), 
+                  aes(label = Gene.Symbol), vjust = 0.5)+ 
+  ylab("Sum PEP score") + xlab("Decreasing rank order of enrichment n = 509") + theme(legend.position = "none") + theme_bw()
+```
+
+#Load the selected GO nuclear, chromatin terms and plotted them for various SICAP, co-IP timepoints
+```{r}
+nuclearGO = read.delim("nuclear-chromatinGO.txt", header=FALSE)
+riboGO = read.delim("ribo-spliceo-contaminants-GO.txt", header=FALSE)
+ribo = as.character(riboGO$V1)
+
+#plotting the coIP,SICAP results and coloring the ribosomal proteins
+coIP$GO = ifelse(rownames(coIP) %in% as.character(ribo), "red", "black")
+sicap0$GO = ifelse(rownames(sicap0) %in% as.character(ribo), "red", "black")
+sicap4$GO = ifelse(rownames(sicap4) %in% as.character(ribo), "red", "black")
+sicap8$GO = ifelse(rownames(sicap8) %in% as.character(ribo), "red", "black")
+sicap12$GO = ifelse(rownames(sicap12) %in% as.character(ribo), "red", "black")
+```
+
+
+```{r}
+ggplot(coIP,aes(x=seq_along(Sum.PEP.Score), y=Sum.PEP.Score, alpha = GO)) + geom_point(size = 2.5, colour = coIP$GO) +xlim(0,600) + ylim(0,100) + ggtitle("coIP GO ribosomal") + ylab("Sum PEP score") + xlab("Decreasing order of enrichment n = 509") + theme_bw() #+ geom_text_repel(aes(label=Gene.Symbol), box.padding = 0.5, max.overlaps = Inf,vjust=1.2, hjust=2)
+```
+In the above, plot we can see that lots of ribosomal factors light up but lets see how they look in the SICAP data
+
+First, zero min data
+```{r}
+ggplot(sicap0,aes(x=seq_along(Sum.PEP.Score), y=Sum.PEP.Score, alpha = GO)) + geom_point(size = 2.5, colour = sicap0$GO) + ylim(0,25) + xlim(0,610) + ggtitle("sicap0 GO ribosomal") + ylab("Sum PEP score") + xlab("Decreasing order of enrichment n = 600") + theme_bw() #+ geom_text_repel(aes(label=Gene.Symbol), box.padding = 0.5, max.overlaps = Inf,vjust=1, hjust=2.5)
+```
+
+Now plotting sicap 4 min data
+```{r}
+ggplot(sicap4,aes(x=seq_along(Sum.PEP.Score), y=Sum.PEP.Score, alpha = GO)) + geom_point(size = 2.5, colour = sicap4$GO) + xlim(0,600) + ylim(0,25) + xlim(0,250) + ggtitle("sicap4 GO ribosomal") + ylab("Sum PEP score") + xlab("Decreasing order of enrichment n = 253") + theme_bw() #+ geom_text_repel(aes(label=Gene.Symbol), box.padding = 0.5, max.overlaps = Inf,vjust=1, hjust=2.5)
+```
+
+Less ribosomal components show up in SICAP compared to co-IP suggesting specifity
+
+```{r}
+ggplot(sicap8,aes(x=seq_along(Sum.PEP.Score), y=Sum.PEP.Score, alpha = GO)) + geom_point(size = 2.5, colour = sicap8$GO) + xlim(0,165) + ylim(0,25) + ggtitle("sicap8 GO ribosomal") + ylab("Sum PEP score") + xlab("Decreasing order of enrichment n = 253") + theme_bw() #+ geom_text_repel(aes(label=Gene.Symbol), box.padding = 0.5, max.overlaps = Inf,vjust=1, hjust=2.5)
+```
+
+```{r}
+ggplot(sicap12,aes(x=seq_along(Sum.PEP.Score), y=Sum.PEP.Score, alpha = GO)) + geom_point(size = 2.5, colour = sicap12$GO) + ylim(0,25) + xlim(0,600) +ggtitle("sicap12 GO ribosomal") + ylab("Sum PEP score") + xlab("Decreasing order of enrichment n = 253") + theme_bw() #+ geom_text_repel(aes(label=Gene.Symbol), box.padding = 0.5, max.overlaps = Inf,vjust=1, hjust=2.5)
+```
+Lets create a table of intersections with ribosomal and spliceomal proteins
+```{r}
+#already done in excel
+```
+
+
+```{r}
+union_sicap_048 = unique(union(sicap0$Gene.Symbol, union(sicap4$Gene.Symbol, sicap8$Gene.Symbol)))
+union_sicap = unique(union(union_sicap_048, sicap12$Gene.Symbol))
+library(data.table)
+fwrite(list(union_sicap), file= "sicap_proteinsUnion.txt")
+```
+
+
+```{r}
+#plot the proportion & percentages of spliceosomal and ribosomal hits across various samples
+library(datapasta)
+hits = data.frame(
+  stringsAsFactors = FALSE,
+            Sample = c("SICAP0", "SICAP4", "SICAP8", "SICAP12", "coIP"),
+          Ribosome = c(44L, 27L, 16L, 36L, 93L),
+       Spliceosome = c(40L, 24L, 12L, 31L, 74L),
+            Others = c(516L, 202L, 132L, 290L, 342L)
+       )
+
+hits_long = reshape2::melt(hits, value.name = "sample")
+```
+
+
+```{r}
+# Create ggplot2 plot scaled to 1.00
+ggp = ggplot(hits_long,
+       aes(x = Sample,
+           y = sample,
+           fill = variable)) +
+  geom_bar(position = "fill", stat = "identity") + ylab("Proportion of hits") + xlab("Sample") + scale_fill_discrete(name = "Protein Classes") + theme_bw()
+ggp
+
+#trying to make a plot with raw numbers
+ggplot(hitslong,
+       aes(x = Sample,
+           y = n,
+           fill = variable, 
+           cumulative = TRUE)) +
+  geom_col() +
+  geom_text(aes(label = n), 
+            position = position_stack(vjust = 0.5)) + 
+  ylab("Number of interactors") +
+  theme_bw() + 
+  scale_fill_discrete(name = "Protein Classes")
+```
+
+
+```{r}
+#plotting the proportions scaled to 1
+ggplot(hitslong,
+       aes(x = Sample,
+           y = proportion,
+           fill = variable, 
+           cumulative = TRUE)) +
+  geom_col() +
+  geom_text(aes(label = paste0(round(proportion,3))), 
+            position = position_stack(vjust = 0.5)) + 
+  ylab("Number of interactors") +
+  theme_bw() + 
+  scale_fill_discrete(name = "Protein Classes")
+```
+
+
+```{r}
+# Draw ggplot2 plot scaled to 100%
+ggp + ylab("Percentage of hits") + 
+  scale_y_continuous(labels = scales::percent_format())
+
+#trying to add percentages to the plot
+hitslong = hits_long %>% group_by(Sample,variable) %>% tally(sample) %>% mutate(proportion = n/sum(n))
+
+ggplot(hitslong,
+       aes(x = Sample,
+           y = proportion * 100,
+           fill = variable, 
+           cumulative = TRUE)) +
+  geom_col() +
+  geom_text(aes(label = paste0(round(proportion * 100,1), "%")),
+            position = position_stack(vjust = 0.5)) + 
+  ylab("Percentage of hits") +
+  theme_bw() + 
+  scale_fill_discrete(name = "Protein Classes")
+
+```
+
+
+
+
+
