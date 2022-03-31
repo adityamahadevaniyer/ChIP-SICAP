@@ -1,0 +1,339 @@
+---
+title: "B6vD2-RNAseq-SICAP-integration"
+author: "Aditya Mahadevan"
+date: "11/10/2021"
+output: html_document
+---
+
+```{r}
+#Loading all the required packages
+library("DESeq2")
+library("gplots")
+library("RColorBrewer")
+library("ggplot2")
+library("pheatmap")
+library(GenomicRanges)
+library(biomaRt)
+library(DESeq2)
+library(tidyverse)
+library(ggpubr)
+library(EnhancedVolcano)
+library(msigdbr)
+library(biobroom)
+library(clusterProfiler)
+library(org.Mm.eg.db)
+library(ggrepel)
+library(tidyverse)
+library(ComplexHeatmap)
+```
+
+
+```{r}
+#Reading the SICAP data
+sicap0 = read.delim("0min-processed.txt")
+sicap4 = read.delim("4min-processed.txt")
+sicap8 = read.delim("8min-processed.txt")
+sicap12 = read.delim("12min-processed.txt")
+coIP = read.delim("coIP-processed.txt")
+```
+
+
+```{r}
+##Cleaning the data a little bit, converting the gene_symbols to rownames
+x <- read.delim("EMASE_B6_D2_counts.txt", sep="\t", row.names="gene")
+group <- factor(c(1,1,1,2,2,2))
+rownames(x) <- x$gene_symbol
+tidy_counts <- x %>%
+  dplyr::select(-rowname)
+
+# Generate metadata colData object
+colData <- data.frame(
+  "sampleID" = colnames(tidy_counts),
+  "condition" = c(rep("B6",3),rep("D2",3)),
+  row.names = colnames(tidy_counts))
+
+rownames(tidy_counts) = x$rowname
+tidy_counts <- apply(tidy_counts, MARGIN = 1:2, FUN = round)
+```
+
+
+```{r}
+dds <- DESeqDataSetFromMatrix(countData = rounded_counts,
+                              colData = colData,
+                              design = ~condition)
+
+#colData is a data frame with the metadata
+colData(dds)
+#show the grouping info for treatment
+colData(dds)$condition
+```
+
+
+```{r}
+#Inspect the dds object
+class(counts(dds))
+str(counts(dds))
+
+rld <- rlog(dds)
+plotPCA(rld)
+
+# perform differential gene expression analysis
+dds <- DESeq(dds)
+```
+
+
+```{r}
+#Tidy results with biobroom package
+library(biobroom)
+tidy_results <- tidy(results)
+head(tidy_results)
+rownames(tidy_results) = rownames(tidy_counts)
+ggplot(tidy_results, aes(x=estimate, y=log(p.value),
+                         color=log(baseMean))) + geom_point(alpha=0.5) +
+  ggtitle("Volcano Plot For D2 vs B6 via DESeq2") + theme_bw()
+
+#Look at what comparisons were made
+resultsNames(dds)
+
+#use contrast argument to define other comparisons
+#store results into a new object
+res <- results(dds,name="condition_D2_vs_B6")
+rownames(res) = x$rowname
+
+#Inspect the results object 
+head(res,n=10)
+mcols(res,use.names=TRUE)
+
+#ask for a summary of res
+summary(res)
+summary(results(dds,alpha=0.01))
+```
+
+
+```{r}
+# plot average expression versus log2 fold change - points are colored blue if Padj < 0.1
+plotMA(results, ylim = c(-4, 4))
+
+# plot histogram of P-values
+hist(results$pvalue, breaks=20, col="grey50", border="white" )
+
+# plot histogram of P-values - improved version by filtering out genes with very low expression levels
+hist(results$pvalue[results$baseMean > 1], breaks = 20, col = "grey50", border = "white")
+```
+
+
+```{r}
+#Shrink lfcs####
+#in current versions of DESEq2 shrinkage is not done by the DESeq function
+#you can calculate them afterwards using lfcShrink()
+res.shr <- lfcShrink(dds=dds,coef=2)
+rownames(res.shr) = x$rowname
+head(res.shr)
+head(res)
+```
+
+
+```{r}
+#order resPlot according to increasing padj
+resOrdered <- resPlot[order(resPlot$padj),]
+#remove rows with missing padj
+resFix <- res.shr[!is.na(res.shr$padj),]
+#input for ggplot2 needs to be a data frame
+resPlot <- as.data.frame(resFix)
+#Top 10 genes based on padj
+select <- resOrdered$ENSEMBL[1:10]
+```
+
+
+```{r}
+#adding gene ids to the resPlot
+#create the histogram with ggplot2
+ggplot(resPlot,aes(x=log2FoldChange)) + geom_histogram(bins=60)
+
+#We will use the VST implemented with the vst() function:
+vsd <- vst(dds,blind=FALSE)
+#The samples are projected onto the 2D plane such that they spread 
+#out in the two directions that explain most of the differences 
+data <- plotPCA(vsd,intgroup=c("sampleID", "condition"),returnData=TRUE)
+percentVar <- round(100 * attr(data,"percentVar"))
+#PCA plot
+#Simple ggplot
+ggplot(data, aes(x=PC1, y=PC2,colour=condition), stat = "identity",
+  position = "identity") + geom_point()
+#Adding more information to the PCA plot
+ggplot(data,aes(PC1,PC2,color=condition,shape=group)) + geom_point(size=3) +
+  labs(x=paste0("PC1: ",percentVar[1],"% variance"),
+       y=paste0("PC2: ",percentVar[2],"% variance")) + theme_classic()
+```
+
+
+```{r}
+#Load mouse annotation
+library(org.Mm.eg.db)
+library(plyr)
+
+#Make data frame with Ensembl IDs and symbols 
+#for all mouse genes
+keys <- keys(org.Mm.eg.db)
+s <- AnnotationDbi::select(org.Mm.eg.db,keys=keys,
+                           columns=c("ENSEMBL","SYMBOL"))
+
+#Remove rows with missing Ensembl IDs
+s <- s[!is.na(s$ENSEMBL),c("ENSEMBL","SYMBOL")]
+
+#Create column in resPlot with Ensembl IDS (now row names)
+resPlot$ENSEMBL <- rownames(resPlot)
+
+#Join both tables based on Ensembl IDs
+resPlot <- join(resPlot,s,by=c("ENSEMBL"))  
+head(resPlot)
+```
+
+
+```{r}
+#select genes with adjusted p-value < 0.01 (FDR = 1%)
+#and shrunken lfc at least 1 or -1 (2-fold): use abs()
+resString <- resFix[abs(resFix$log2FoldChange) >= 1 & (resFix$padj < 0.01),]
+head(resString)
+
+#Volcano plot####
+plot(resPlot$log2FoldChange,1-resPlot$padj,xlim=c(-6,6),
+     main="volcano plot for padj<0.01 & abs(LFC)>=1")
+
+#create the volcano plot with ggplot2
+#create a column to use for the coloring
+#color dots with padj < 1e-10 and abs(lfc) > 2 red
+resPlot$threshold <- abs(resPlot$log2FoldChange)>2 & -log10(resPlot$padj)>10
+
+ggplot(resPlot,aes(log2FoldChange,-log10(padj),color=threshold)) + 
+  geom_point(shape=1) +
+  scale_color_manual(name="lfc > 2 and p < 1e-10",
+                     values=c("black","red")) +
+  ggtitle("p-value versus fold change") + 
+  geom_hline(yintercept=10,color="red",linetype=2) +
+  geom_vline(xintercept=-2,color="red",linetype=2) +
+  geom_vline(xintercept=2,color="red",linetype=2) +    
+  geom_text_repel(aes(label=ifelse(threshold==TRUE,SYMBOL,"")),size=2) + theme_classic()
+```
+
+
+```{r}
+# Different color for down and up
+logic1 <- (resPlot$log2FoldChange > 2 & -log10(resPlot$padj) > 10)
+logic2 <- (resPlot$log2FoldChange < -2 & -log10(resPlot$padj) > 10)
+resPlot$threshold <- ifelse(logic1,'B',ifelse(logic2,'C','A'))
+
+ggplot(resPlot,aes(log2FoldChange,-log10(padj))) + 
+  geom_point(shape=1,aes(color=threshold)) +
+  scale_color_manual(name="differential expression",
+                     values=c("black","red","green"),
+                     labels=c("|lfc|<2 or p>e-10",
+                              ">4 fold UP and p<e-10",
+                              ">4 fold DOWN and p<e-10")) +
+  ggtitle("p-value versus fold change") + 
+  geom_hline(yintercept=10,color="red",linetype=2)+
+  geom_vline(xintercept=-2,color="red",linetype=2) +
+  geom_vline(xintercept=2,color="red",linetype=2)
+```
+
+
+```{r}
+#Drop all the NAs from the resplot and get those DE genes in a form of list
+#Remember that these are p<0.01 and abs(FC > 2)
+DE_genes = resPlot %>% drop_na() %>% dplyr::filter(threshold == "B"| threshold == "C") 
+#Check if these overlap any of the coIP proteins
+intersect(toupper(DE_genes$SYMBOL), coIP$Gene.Symbol)
+intersect(toupper(DE_genes$SYMBOL), sicap0$Gene.Symbol)
+intersect(toupper(DE_genes$SYMBOL), sicap4$Gene.Symbol)
+intersect(toupper(DE_genes$SYMBOL), sicap8$Gene.Symbol)
+intersect(toupper(DE_genes$SYMBOL), sicap12$Gene.Symbol)
+```
+
+
+```{r}
+#vst values are already log transformed
+toplot <- assay(vsd)[1:20,]
+
+#for selection you need Ensembl IDs: they are unique
+#for heat map you want gene symbols because they are meaningfull
+
+rownames(toplot) <- resOrdered$SYMBOL[1:20]
+
+#drop all the rows with NA and lnf values
+resOrdered = resOrdered %>% na.omit()
+#toplot = toplot[!is.infinite(rowSums(resOrdered[,])),]
+```
+
+
+```{r}
+#make heat map of normalized counts for these genes
+df <- as.data.frame(colData(vsd)[,c("sampleID","condition")])
+ann_colors <- list(treatment=c(B6="blue",D2="red"),
+                   cells=c(N61311="aquamarine",N052611="blue",
+                           N080611="darkgrey",N061011="azure"))
+
+#use pheatmap() to make the heat map of the toplot data
+#show gene symbols for the rows
+#use df as annotation for the columns
+#use ann_colors as colors for the column annotations
+#for the heat map low expression=green, high expression=red, medium=black
+#Kahoot question 12: Which factor clusters the samples?
+pheatmap(toplot,show_rownames=TRUE,annotation_col=df,
+         annotation_colors=ann_colors,
+         color=colorRampPalette(c("green","black","red"))(50))
+
+#Plotting after scaling- still getting error because of NA/lnf- dont know those are not there in the data
+pheatmap(toplot,show_rownames=TRUE,annotation_col=df,
+         annotation_colors=ann_colors,scale="row",
+         color=colorRampPalette(c("green","black","red"))(50))
+```
+
+
+```{r}
+#trying to plot dendrogram
+d = assay(vst)
+d = t(d)
+d = dist(d)
+h = hclust(d)
+plot(h)
+```
+
+
+```{r}
+#adding annotations to the lfc shrink data
+library(EnsDb.Mmusculus.v79)
+ens2sym <- AnnotationDbi::select(EnsDb.Mmusculus.v79, keys = keys(EnsDb.Mmusculus.v79), keytype = c("SYMBOL","GENENAME"), columns = c("GENENAME"))
+View(ens2sym)
+
+resdf <- resPlot %>%
+  rownames_to_column() %>%
+  mutate(GENEID = gsub(rowname, pattern = "\\..+", replacement = "")) %>%
+  dplyr::select(-rowname) %>%
+  inner_join(y = ens2sym, by = "GENEID")
+```
+
+
+```{r}
+#ENSEMBL IDs of upregulated genes
+EnsemblIDs_up <- rownames(resString[resString$log2FoldChange > 1,])
+Symbols_Up <- na.omit(resPlot[resPlot$ENSEMBL %in% EnsemblIDs,"SYMBOL"])
+
+library(dplyr)
+resString %>% dplyr::filter(padj < .01 & log2FoldChange > 2)
+
+EnsemblIDs_down <- rownames(resString[resString$log2FoldChange < 1,])
+Symbols_down <- na.omit(resPlot[resPlot$ENSEMBL %in% EnsemblIDs,"SYMBOL"])
+intersect(Symbols_Up, Symbols_down)
+
+#write.table(Symbols,file="outputupNames.txt",quote=FALSE,col.names=FALSE, row.names=FALSE)
+```
+
+
+```{r}
+#intersection of upregulated genes and sicap 
+Symbols[coIP$Gene.Symbol %in% toupper(Symbols)]
+```
+
+##BY MANUAL ANALYSIS OF GENE INTERSECTIONS USING VENNY, I IDENTIFIED 2 GENES TO BE DE AND OVERLAPPING WITH COIP- RPS6(UP), SBSN(DOWN)
+```
+
