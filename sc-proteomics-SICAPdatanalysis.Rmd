@@ -1,0 +1,137 @@
+---
+title: "Single-cell-proteomics-SICAPanalysis"
+author: "Aditya Mahadevan"
+date: "3/17/2022"
+output: html_document
+---
+
+```{r}
+#Load the libraries needed for analyses
+library(datapasta)
+library(ggplot2)
+library(tidyverse)
+library(corrgram)
+library(corrplot)
+library(ggfortify)
+library(ggrepel)
+library(edgeR)
+library(reshape2)
+library(stringr)
+```
+The count data (sc_proteomics)has the average of the counts from the three replicates for each stage. I obtained the data from the paper "Prediction and Validation of Mouse Meiosis-Essential Genes Based on Spermatogenesis Proteome Dynamics" published in MCP https://pubmed.ncbi.nlm.nih.gov/33257503/ (2021). 
+```{r}
+#Load the data
+sc_proteomics = read.csv("mmc1-scproteomics.csv")
+colnames(sc_proteomics) = c("gene.names", "protein.ids", "A.undiffentiated", "leptotene", "zygotene", "early.pachytene", "mid.pachytene", "late.pachytene", "early.diplotene", "late.diplotene2", "round.spermatid")
+sc_proteomics = sc_proteomics[,-2]
+
+#3 genes have duplicate gene names; so removing that first
+sc_proteomics = sc_proteomics[!duplicated(sc_proteomics$gene.names),]
+rownames(sc_proteomics) = sc_proteomics$gene.names
+sc_proteomics = sc_proteomics[,-1]
+
+saveRDS(sc_proteomics, "Robjects/single-cell-proteomics-cleaned-data.rds")
+
+sc_proteomics = readRDS("Robjects/single-cell-proteomics-cleaned-data.rds")
+```
+The single cell proteomics data has genes as rownames and the counts in the form of intenisty values across various stages from spermatogonia to round spermatids. 
+
+First, I want to see the correlation and PCA between proteome of different stages
+```{r}
+#Draw correlation plots
+correlation.matrix = cor(sc_proteomics)
+corrplot(correlation.matrix, method = "color")
+
+#PCA on the data
+pca = prcomp(t(sc_proteomics))
+summary(pca)
+
+#Variance captured per PC
+pca.var <- pca$sdev^2
+pca.var.per <- round(pca.var/sum(pca.var)*100, 1)
+
+#Scree or elbow plot
+barplot(pca.var.per, main="Scree Plot", 
+        names.arg = paste0("PC", 1:9),
+        xlab="Principal Component", ylab="Percent Variation")
+
+#Plotting PCAs in base R
+plot(pca$x[,1], pca$x[,2], 
+     xlab=paste0("PC1 (", pca.var.per[1], "%)"),
+     ylab=paste0("PC2 (", pca.var.per[2], "%)"))
+text(pca$x[,1], pca$x[,2], labels = colnames(sc_proteomics))
+```
+
+
+```{r}
+#Make a fancy PCA using ggplot
+df = as.data.frame(pca$x)
+
+df$samples <- colnames(sc_proteomics) 
+
+ggplot(df) +
+  aes(PC1, PC2, label=samples) + 
+  geom_point(size = 3, fill = "black") +
+  geom_text_repel(show.legend = FALSE) +
+  xlab("PC1 [71.3%]") +
+  ylab("PC2 [19.1%]")
+  theme_bw()
+```
+Most of the dimensions are capture in PC1 and PC2 as we can see in from the scree plot. This is from unnormalized data. Lets normalize the data and then look at the PCA plot
+
+For now,this count data has the average of the intensity values from the three replicates for each stage. The other option is to get raw values, normalize and then plot it. The mean intensity value table should suffice for now.
+```{r}
+sc_proteomics = tibble::rownames_to_column(sc_proteomics, "genes")
+melt_data = melt(sc_proteomics, id.vars = "genes", variable.name= "counts")
+saveRDS(melt_data, "Robjects/melt_scproteomics_data.rds")
+#readRDS("Robjects/melt_scproteomics_data.rds")
+group = c("Prdm9", "Hells", "Dek", "Zcwpw1", "Zc3h13", "Fus", "Tls", "Smarca5", "Btf", "Bclaf1", "Dmc1", "Spo11", "Rad51", "Mlh1")
+
+melt_data$style = ifelse(melt_data$genes %in% group, "red", "black")
+
+#plot only the main PRDM9 interactors (average counts values)
+melt_data %>% filter(style == "red") %>% ggplot(aes(x = counts, y = value, color = genes)) + geom_point(size = 2.5) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_grid(~genes) + xlab("Protein content across stages") + ylab("Average protein abundance \n with unique peptides >=2") + scale_fill_discrete(name = "Hotspot proteins")
+```
+
+
+```{r}
+#facetting by free y-axis scale
+melt_data %>% group_by(counts, genes) %>% filter(style == "red") %>% ggplot(aes(x = counts, y = value, group = genes, colour = genes)) + geom_line() + geom_point() + facet_wrap(~genes, scales="free_y") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Protein content across stages") + ylab("Average protein abundance \n with unique peptides >=2") + scale_fill_discrete(name = "Hotspot proteins")
+```
+
+
+```{r}
+#A simple heatmap for plotting expression of the top 50 interactors from the 12 min SICAP data
+
+top50 = c("HELLS", "MKI67", "PRDM9", "HIST1H1E", "MACROH2A1", "SUPT16H", "H4-16", "DDX21", "TOP2A", "DSP", "BAZ1B", "PRPF8", "PFN1", "HNRNPU", "TOP1", "SMC1A", "NCL", "FUS", "TRIM28", "SPRR2E", "GTF2I", "SPRR2G", "SPRR2D", "HNRNPL", "H2BC18", "XRCC6", "RPL7A", "APEX1", "RAN", "PRMT1", "HP1BP3", "SRSF9", "PRKDC", "MSH6", "ACTG2", "HEL2", "ILF3", "SPRR2A", "ENO1", "RECQL", "SNRNP200", "RPS27A", "HSP90AA1", "RPL3", "RPL22", "TUBA1C", "TOP2B", "YWHAZ", "RPS8")
+top50 = str_to_title(top50)
+sc_proteomics = sc_proteomics %>% column_to_rownames(var = "genes") 
+
+sc_proteomics$tophits = ifelse(rownames(sc_proteomics) %in% as.character(top50), "red", "black")
+
+#pheatmap
+sc_proteomics %>%  filter(tophits == "red") %>% select(1:9) %>% pheatmap::pheatmap(show_rownames = T, cluster_cols = TRUE)
+
+#sc_proteomics %>%  filter(tophits == "red") %>% rownames_to_column("genes") %>% select(1:11) %>% melt(id.vars = "genes", variable.name= "counts") %>% ggplot(aes(x = genes, y = counts, fill = value)) + geom_point()
+```
+
+
+```{r}
+#I would like to try to get the genes that have similar expression dynamics as HELLS, PRDM9/ZCWPW1. How do I plot this?
+#1. Do clustering ?
+#2. Plot profile matches with PRDM9/HELLS pattern
+sc_proteomics = sc_proteomics %>%  mutate(cluster = case_when(
+  (leptotene > zygotene & zygotene > early.pachytene) ~ "P9", 
+  (zygotene > leptotene & zygotene > early.pachytene) ~ "DMC1",
+  TRUE ~ "others"))
+
+sc_proteomics %>% filter(cluster == "P9", tophits == "red") %>% View()
+sc_proteomics %>% filter(cluster == "DMC1", tophits == "red") %>% View()
+
+#plotting PRDM9 pattern
+sc_proteomics %>% rownames_to_column("genes") %>% melt(id.vars = c("genes", "cluster", "tophits"), variable.name= "counts") %>% filter(cluster == "P9", tophits == "red") %>% ggplot(aes(x = counts, y = value, group = genes, colour = genes)) + geom_line() + geom_point() + facet_wrap(~genes, scales="free_y") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Spermatogenic Stages") + ylab("Average protein abundance \n with unique peptides >=2") + scale_fill_discrete(name = "Hotspot proteins")
+
+#Dmc1 pattern
+sc_proteomics %>% rownames_to_column("genes") %>% melt(id.vars = c("genes", "cluster", "tophits"), variable.name= "counts") %>% filter(cluster == "DMC1", tophits == "red") %>% ggplot(aes(x = counts, y = value, group = genes, colour = genes)) + geom_line() + geom_point() + facet_wrap(~genes, scales="free_y") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Spermatogenic Stages") + ylab("Average protein abundance \n with unique peptides >=2") + scale_fill_discrete(name = "Hotspot proteins")
+```
+

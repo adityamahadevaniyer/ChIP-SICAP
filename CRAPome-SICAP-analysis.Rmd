@@ -1,0 +1,117 @@
+---
+title: "CRAPome-SICAP-analysis"
+author: "Aditya Mahadevan"
+date: "3/23/2022"
+output: html_document
+---
+
+```{r}
+#Load all the packages needed for the analysis
+library(ggplot2)
+library(tidyverse)
+```
+
+
+```{r}
+#load the datasets
+crapome = readxl::read_xlsx("CRAPome-matrix-lXBEnHki.xlsx", sheet = 1)
+coIP = readRDS("Robjects/coIP.rds")
+sicap0 = readRDS("Robjects/sicap0.rds")
+sicap4 = readRDS("Robjects/sicap4.rds")
+sicap8 = readRDS("Robjects/sicap8.rds")
+sicap12 = readRDS("Robjects/sicap12.rds")
+```
+
+The crapome lists were filtered by extracting the proteins that had more than 500 peptides covered in all the experimental IPs
+```{r}
+crapome_filtered = crapome %>%
+  rowwise() %>% 
+  dplyr::mutate(total = sum(c_across(6:348))) %>%
+  dplyr::filter(total > 500) %>%
+  pull(geneSymbol)
+```
+
+
+```{r}
+#plotting the coIP,SICAP results and coloring the CRAPome proteins
+coIP$GO = ifelse(rownames(coIP) %in% as.character(crapome_filtered), "red", "black")
+sicap0$GO = ifelse(rownames(sicap0) %in% as.character(crapome_filtered), "red", "black")
+sicap4$GO = ifelse(rownames(sicap4) %in% as.character(crapome_filtered), "red", "black")
+sicap8$GO = ifelse(rownames(sicap8) %in% as.character(crapome_filtered), "red", "black")
+sicap12$GO = ifelse(rownames(sicap12) %in% as.character(crapome_filtered), "red", "black")
+```
+
+```{r}
+#Get the number of protein overlaps of CRAPome with the coIP/SICAP datasets
+coIP %>% filter(GO == "red") %>% nrow()
+sicap0 %>% filter(GO == "red") %>% nrow()
+sicap4 %>% filter(GO == "red") %>% nrow()
+sicap8 %>% filter(GO == "red") %>% nrow()
+sicap12 %>% filter(GO == "red") %>% nrow()
+```
+
+
+```{r}
+ggplot(coIP,aes(x=seq_along(Sum.PEP.Score), y=Sum.PEP.Score, alpha = GO)) + geom_point(size = 2.5, colour = coIP$GO) +xlim(0,600) + ylim(0,100) + ggtitle("CRAPome proteins in coIP") + ylab("Sum PEP score") + xlab("Decreasing order of enrichment n = 509") + theme_bw()
+```
+
+```{r}
+ggplot(sicap0,aes(x=seq_along(Sum.PEP.Score), y=Sum.PEP.Score, alpha = GO)) + geom_point(size = 2.5, colour = sicap0$GO) + ylim(0,25) + xlim(0,610) + ggtitle("sicap0 GO ribosomal") + ylab("Sum PEP score") + xlab("Decreasing order of enrichment n = 600") + theme_bw() #+ geom_text_repel(aes(label=Gene.Symbol), box.padding = 0.5, max.overlaps = Inf,vjust=1, hjust=2.5)
+```
+
+```{r}
+ggplot(sicap4,aes(x=seq_along(Sum.PEP.Score), y=Sum.PEP.Score, alpha = GO)) + geom_point(size = 2.5, colour = sicap4$GO) + xlim(0,600) + ylim(0,25) + xlim(0,250) + ggtitle("CRAPome proteins in sicap4") + ylab("Sum PEP score") + xlab("Decreasing order of enrichment n = 253") + theme_bw() #+ geom_text_repel(aes(label=Gene.Symbol), box.padding = 0.5, max.overlaps = Inf,vjust=1, hjust=2.5)
+```
+
+
+```{r}
+ggplot(sicap8,aes(x=seq_along(Sum.PEP.Score), y=Sum.PEP.Score, alpha = GO)) + geom_point(size = 2.5, colour = sicap8$GO) + xlim(0,165) + ylim(0,25) + ggtitle("CRAPome proteins in sicap8") + ylab("Sum PEP score") + xlab("Decreasing order of enrichment n = 160") + theme_bw() #+ geom_text_repel(aes(label=Gene.Symbol), box.padding = 0.5, max.overlaps = Inf,vjust=1, hjust=2.5)
+```
+
+
+```{r}
+ggplot(sicap12,aes(x=seq_along(Sum.PEP.Score), y=Sum.PEP.Score, alpha = GO)) + geom_point(size = 2.5, colour = sicap12$GO) + ylim(0,25) + xlim(0,600) +ggtitle("CRAPome proteins in sicap12") + ylab("Sum PEP score") + xlab("Decreasing order of enrichment n = 357") + theme_bw() #+ geom_text_repel(aes(label=Gene.Symbol), box.padding = 0.5, max.overlaps = Inf,vjust=1, hjust=2.5)
+```
+
+
+```{r}
+#Plug the number of overlaps with CRAPome along with the samples
+hits = data.frame(stringsAsFactors = FALSE,
+                  SAMPLE = c("coIP","sicap0","sicap4", "sicap8", "sicap12"),
+                  CRAPOME = c(coIP %>% filter(GO == "red") %>% nrow(), sicap0 %>% filter(GO == "red") %>% nrow(), sicap4 %>% filter(GO == "red") %>% nrow(), sicap8 %>% filter(GO == "red") %>% nrow(), sicap12 %>% filter(GO == "red") %>% nrow()),
+                  TOTAL = c(509, 600, 253, 160, 357))
+hits = hits %>% mutate(others = TOTAL - CRAPOME) %>% select(SAMPLE, CRAPOME, others)
+hits_long = reshape2::melt(hits, value.name = "sample")
+```
+
+
+```{r}
+# Create ggplot2 plot scaled to 1.00
+ggp = ggplot(hits_long,
+       aes(x = SAMPLE,
+           y = sample,
+           fill = variable)) +
+  geom_bar(position = "fill", stat = "identity") + ylab("Proportion of hits") + xlab("Sample") + scale_fill_discrete(name = "Protein Classes") + theme_bw()
+ggp
+
+ggp + ylab("Percentage of hits") + 
+  scale_y_continuous(labels = scales::percent_format())
+```
+
+
+```{r}
+#trying to add percentages to the plot
+hitslong = hits_long %>% group_by(SAMPLE,variable) %>% tally(sample) %>% mutate(proportion = n/sum(n))
+
+ggplot(hitslong,
+       aes(x = SAMPLE,
+           y = proportion * 100,
+           fill = variable, 
+           cumulative = TRUE)) +
+  geom_col() +
+  geom_text(aes(label = paste0(round(proportion * 100,1), "%")),
+            position = position_stack(vjust = 0.5)) + 
+  ylab("Percentage of hits") +
+  theme_bw() + 
+  scale_fill_discrete(name = "Protein Classes")
+```
